@@ -21,6 +21,8 @@ mai-interview-ai/
 │   ├── transcription.py        # Deepgram transcription service
 │   ├── response_generator.py   # Mistral response generation service
 │   └── config.py               # Application configuration
+└── ui/
+    └── app.py                  # Streamlit frontend application
 └── .env.example                # Example environment file
 \`\`\`
 
@@ -66,6 +68,17 @@ python -m uvicorn src.api:app --reload
 \`\`\`
 
 The API will be available at \`http://localhost:8000\`.
+
+### Running the Streamlit UI
+
+To run the Streamlit frontend application, first ensure your FastAPI backend is running (as described in "Running the Application" above).
+
+Then, open a new terminal in the project root (`mai-interview-ai/`) and run:
+\`\`\`bash
+streamlit run ui/app.py
+\`\`\`
+
+The Streamlit application will open in your web browser, typically at `http://localhost:8501`.
 
 ## API Usage
 
@@ -125,55 +138,74 @@ This section summarizes the key steps, issues encountered, and their resolutions
 
 ### 1. Initial Setup and Configuration
 
-*   Created \`.env\` file for API keys (Deepgram, OpenAI, Mistral).
-*   Created \`src/config.py\` for centralized configuration management.
-*   Updated \`src/api.py\` and \`src/interview_service.py\` to utilize the new \`Config\` class.
-*   Setup initial \`audio_samples\` directory and placed \`test_interview.mp3\` for testing.
-*   Initialized Python virtual environment and installed dependencies from \`requirements.txt\`.
+*   Created `.env` file for API keys (Deepgram, OpenAI, Mistral).
+*   Created `src/config.py` for centralized configuration management.
+*   Updated `src/api.py` and `src/interview_service.py` to utilize the new `Config` class.
+*   Setup initial `audio_samples` directory and placed `test_interview.mp3` for testing.
+*   Initialized Python virtual environment and installed dependencies from `requirements.txt`.
 
 ### 2. Deepgram SDK Integration (Initial Issues & Resolutions)
 
-**Issue 1: \`ImportError: cannot import name 'PrerecordedOptions' from 'deepgram'\`**
-*   **Problem:** The \`deepgram-sdk\` (v5.3.0) had changed its API. \`PrerecordedOptions\` and \`FileSource\` were no longer directly importable from the top-level \`deepgram\` package.
-*   **Resolution:** After extensive investigation and web searching, it was found that \`PrerecordedOptions\` should be imported directly from \`deepgram\` and that \`FileSource\` is not a separate class but an expected dictionary structure.
+**Issue 1: `ImportError: cannot import name 'PrerecordedOptions' from 'deepgram'`**
+*   **Problem:** The `deepgram-sdk` (v5.3.0) had changed its API. `PrerecordedOptions` and `FileSource` were no longer directly importable from the top-level `deepgram` package.
+*   **Resolution:** After extensive investigation and web searching, it was found that `PrerecordedOptions` should be imported directly from `deepgram` and that `FileSource` is not a separate class but an expected dictionary structure.
 
-**Issue 2: \`'coroutine' object is not subscriptable\` and \`was never awaited\`**
-*   **Problem:** Asynchronous Deepgram API calls were not properly \`await\`ed.
+**Issue 2: `'coroutine' object is not subscriptable` and `was never awaited`**
+*   **Problem:** Asynchronous Deepgram API calls were not properly `await`ed.
 *   **Resolution:**
-    *   Made \`InterviewService.process_audio_file\` an \`async\` method.
-    *   Added \`await\` to calls of \`self.transcription.transcribe_file\` and \`self.response_gen.generate_interview_response\`.
-    *   Made the \`main\` function \`async\` and used \`asyncio.run(main())\` to execute it.
-    *   Added \`import asyncio\` to \`src/interview_service.py\`.
+    *   Made `InterviewService.process_audio_file` an `async` method.
+    *   Added `await` to calls of `self.transcription.transcribe_file` and `self.response_gen.generate_interview_response`.
+    *   Made the `main` function `async` and used `asyncio.run(main())` to execute it.
+    *   Added `import asyncio` to `src/interview_service.py`.
 
-**Issue 3: \`MediaClient.transcribe_file() takes 1 positional argument but 2 positional arguments were given\`**
-*   **Problem:** The \`transcribe_file\` method expected the audio buffer as a keyword argument \`request=\`, not a positional argument.
-*   **Resolution:** Modified the call to \`transcribe_file\` to pass the audio data as \`request=buffer_data\`.
+**Issue 3: `MediaClient.transcribe_file() takes 1 positional argument but 2 positional arguments were given`**
+*   **Problem:** The `transcribe_file` method expected the audio buffer as a keyword argument `request=`, not a positional argument.
+*   **Resolution:** Modified the call to `transcribe_file` to pass the audio data as `request=buffer_data`.
 
-**Issue 4: \`'ListenV1Response' object has no attribute 'to_dict'\`**
-*   **Problem:** The \`ListenV1Response\` object returned by Deepgram SDK (v5.3.0) no longer had a \`.to_dict()\` method for data access.
-*   **Resolution:** Updated data extraction to use direct attribute access (e.g., \`response.results.channels[0].alternatives[0].transcript\` and \`response.results.channels[0].alternatives[0].confidence\`).
+**Issue 4: `'ListenV1Response' object has no attribute 'to_dict'`**
+*   **Problem:** The `ListenV1Response` object returned by Deepgram SDK (v5.3.0) no longer had a `.to_dict()` method for data access.
+*   **Resolution:** Updated data extraction to use direct attribute access (e.g., `response.results.channels[0].alternatives[0].transcript` and `response.results.channels[0].alternatives[0].confidence`).
 
 ### 3. OpenAI Quota Issue (Non-code related)
 
-*   **Problem:** After resolving all Deepgram and async issues, the application successfully called the OpenAI API but received a \`429 Too Many Requests\` error, indicating an exceeded quota.
+*   **Problem:** After resolving all Deepgram and async issues, the application successfully called the OpenAI API but received a `429 Too Many Requests` error, indicating an exceeded quota.
 *   **Resolution:** This was identified as an external issue requiring the user to check their OpenAI account for usage and billing details. The code itself was functioning correctly.
 
 ### 4. Mistral API Integration
 
-*   **User Request:** Switch from OpenAI to Mistral API for response generation using a free version, with the API key already in \`.env\`.
-*   **Issue 1: \`mistralai\` installation error (\`Invalid requirement\`)**
-    *   **Problem:** Initial \`echo mistralai >> requirements.txt\` command introduced hidden characters or encoding issues.
-    *   **Resolution:** Overwrote \`requirements.txt\` with clean text content and reinstalled dependencies.
-*   **Issue 2: \`MistralAsyncClient\` and \`ChatMessage\` import errors (various \`ModuleNotFoundError\`s)**
-    *   **Problem:** The \`mistralai\` client had undergone a significant API change between versions (\`0.*.*\` to \`1.*.*\`). Web examples and previous attempts were based on an older API.
-    *   **Resolution:** Consulted the official Mistral AI client migration guide (\`https://github.com/mistralai/client-python/blob/main/MIGRATION.md\`).
-        *   Updated \`src/response_generator.py\`:
-            *   Changed client class to unified \`Mistral\` (from \`mistralai import Mistral\`).
-            *   Corrected message class imports to \`from mistralai.models import UserMessage, SystemMessage\` (after thorough inspection of the installed package).
-            *   Adapted the chat method call to \`await self.client.chat.complete_async(...)\`.
-        *   Updated \`src/api.py\` to reflect \`mistral_configured\`.
-        *   Updated \`src/config.py\` to define \`MISTRAL_MODEL\` and validate \`MISTRAL_API_KEY\`.
-        *   Updated \`src/interview_service.py\` to pass Mistral API keys and model to \`ResponseGenerator\`.
+*   **User Request:** Switch from OpenAI to Mistral API for response generation using a free version, with the API key already in `.env`.
+*   **Issue 1: `mistralai` installation error (`Invalid requirement`)**
+    *   **Problem:** Initial `echo mistralai >> requirements.txt` command introduced hidden characters or encoding issues.
+    *   **Resolution:** Overwrote `requirements.txt` with clean text content and reinstalled dependencies.
+*   **Issue 2: `MistralAsyncClient` and `ChatMessage` import errors (various `ModuleNotFoundError`s)**
+    *   **Problem:** The `mistralai` client had undergone a significant API change between versions (`0.*.*` to `1.*.*`). Web examples and previous attempts were based on an older API.
+    *   **Resolution:** Consulted the official Mistral AI client migration guide (`https://github.com/mistralai/client-python/blob/main/MIGRATION.md`).
+        *   Updated `src/response_generator.py`:
+            *   Changed client class to unified `Mistral` (from `mistralai import Mistral`).
+            *   Corrected message class imports to `from mistralai.models import UserMessage, SystemMessage` (after thorough inspection of the installed package).
+            *   Adapted the chat method call to `await self.client.chat.complete_async(...)`.
+        *   Updated `src/api.py` to reflect `mistral_configured`.
+        *   Updated `src/config.py` to define `MISTRAL_MODEL` and validate `MISTRAL_API_KEY`.
+        *   Updated `src/interview_service.py` to pass Mistral API keys and model to `ResponseGenerator`.
 
-**Outcome:** The application successfully integrated with the Mistral API, transcribing audio with Deepgram and generating AI responses with Mistral, with all previous code-level issues resolved.
-\`\`\`
+### 5. Debugging and Resolution during Gemini CLI Interaction
+
+This section details the issues identified and resolved during the interactive session with the Gemini CLI.
+
+**Issue 5.1: `pytest` Installation and Module Not Found Errors**
+*   **Problem:** `pytest` was initially not found, leading to command execution failure. Subsequent attempts to run tests resulted in `ModuleNotFoundError: No module named 'src'` because the project root was not correctly in the Python path for `pytest`.
+*   **Resolution:** Added `pytest` to `requirements.txt` and ensured tests were run by navigating to the project root (`mai-interview-ai/`) and executing `python -m pytest tests`.
+
+**Issue 5.2: API Test Failures in `tests/test_api.py`**
+*   **Problem:** The `test_health_check` and `test_root` functions in `test_api.py` failed due to assertions expecting outdated JSON response structures from the FastAPI endpoints.
+*   **Resolution:** Updated the expected JSON responses in `test_api.py` to accurately reflect the current output of the `/health` and `/` FastAPI endpoints.
+
+**Issue 5.3: FastAPI `TypeError: 'coroutine' object is not subscriptable`**
+*   **Problem:** When calling the `/process-interview` endpoint, the FastAPI server returned an "Internal Server Error." Logs revealed a `TypeError` because `service.transcription.transcribe_file()` and `service.response_gen.generate_interview_response()` (which are `async` methods) were being called without the `await` keyword in `src/api.py`, leading to coroutine objects being treated as dictionaries.
+*   **Resolution:** Added the `await` keyword before both calls in the `process_interview` function within `src/api.py`.
+
+**Issue 5.4: Streamlit UI "Invalid file format" Error**
+*   **Problem:** When attempting to upload an audio file via the Streamlit UI, the FastAPI backend rejected it with a "400 Bad Request" and "Invalid file format" error, despite the file being valid and working via direct `curl` requests. This indicated that the Streamlit UI was not correctly sending the file's metadata (filename, MIME type) to FastAPI.
+*   **Resolution:** Modified `ui/app.py` to pass the `uploaded_audio.name`, `uploaded_audio.getvalue()`, and `uploaded_audio.type` explicitly as a tuple to the `requests.post` `files` parameter. This ensured FastAPI received the correct file information for validation.
+
+**Overall Outcome:** The application is now fully functional and robust. The FastAPI backend correctly processes audio transcription using Deepgram and generates AI-powered interview response suggestions using Mistral AI. The Streamlit frontend successfully interacts with the backend, allowing users to upload audio and receive feedback.

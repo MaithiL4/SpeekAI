@@ -6,3 +6,5 @@ deepgram-sdk
 openai
 aiofiles
 mistralai
+streamlit
+pytest

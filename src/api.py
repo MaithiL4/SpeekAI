@@ -99,7 +99,7 @@ async def process_interview(
             context["job_description"] = job_description
         
         # Step 1: Transcribe
-        transcription_result = service.transcription.transcribe_file(tmp_path)
+        transcription_result = await service.transcription.transcribe_file(tmp_path)
         
         if not transcription_result["success"]:
             raise HTTPException(
@@ -108,7 +108,7 @@ async def process_interview(
             )
         
         # Step 2: Generate suggestion
-        suggestion_result = service.response_gen.generate_interview_response(
+        suggestion_result = await service.response_gen.generate_interview_response(
             transcription_result["transcript"],
             context
         )

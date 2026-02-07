@@ -7,7 +7,14 @@ client = TestClient(app)
 def test_health_check():
     response = client.get("/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "healthy", "service": "running"}
+    assert response.json() == {
+        "status": "healthy",
+        "service": "running",
+        "config": {
+            "deepgram_configured": True,
+            "mistral_configured": True
+        }
+    }
 
 def test_root():
     response = client.get("/")
@@ -15,5 +22,10 @@ def test_root():
     assert response.json() == {
         "message": "Clarity Interview AI API",
         "version": "1.0.0",
-        "endpoints": ["/health", "/process-interview"]
+        "status": "operational",
+        "endpoints": {
+            "health": "/health",
+            "docs": "/docs",
+            "process_interview": "/process-interview"
+        }
     }
