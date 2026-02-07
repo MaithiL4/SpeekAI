@@ -209,3 +209,38 @@ This section details the issues identified and resolved during the interactive s
 *   **Resolution:** Modified `ui/app.py` to pass the `uploaded_audio.name`, `uploaded_audio.getvalue()`, and `uploaded_audio.type` explicitly as a tuple to the `requests.post` `files` parameter. This ensured FastAPI received the correct file information for validation.
 
 **Overall Outcome:** The application is now fully functional and robust. The FastAPI backend correctly processes audio transcription using Deepgram and generates AI-powered interview response suggestions using Mistral AI. The Streamlit frontend successfully interacts with the backend, allowing users to upload audio and receive feedback.
+## Product Roadmap
+
+This outlines the planned development for SpeekAI.
+
+## ✅ Phase 1: MVP (COMPLETE - Feb 6-7)
+- [x] Audio transcription (Deepgram)
+- [x] AI response generation (Mistral)
+- [x] REST API
+- [x] Basic web UI
+
+## 🚧 Phase 2: Core Features (In Progress - Feb 8-16)
+- [ ] Deploy to Streamlit Cloud (Feb 8)
+- [ ] Speaker diarization (Feb 10-11)
+- [ ] Real-time recording (Feb 12-13)
+- [ ] Session history (Feb 14-15)
+
+## 📋 Phase 3: Advanced Features (Planned - Feb 17-23)
+- [ ] Analytics dashboard
+- [ ] Mock interview mode
+- [ ] STAR method analysis
+- [ ] Multi-language support
+
+## 💰 Phase 4: Monetization (Planned - Feb 24 - Mar 2)
+- [ ] Public launch (Product Hunt)
+- [ ] Payment integration (Razorpay)
+- [ ] Pricing tiers
+- [ ] First paying customers
+
+## 🎯 Future (Month 2+)
+- [ ] Mobile app
+- [ ] Video recording
+- [ ] Team accounts
+- [ ] API marketplace integration
+
+**Last Updated**: Feb 6, 2026
