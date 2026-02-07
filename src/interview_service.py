@@ -45,20 +45,27 @@ class InterviewService:
         
         # Step 1: Transcribe
         print("Step 1: Transcribing audio...")
-        transcript_result = await self.transcription.transcribe_file(audio_path)
+        transcript_result = await self.transcription.transcribe_file(audio_path, diarize=True)
         
         if not transcript_result["success"]:
             print(f"❌ Transcription failed: {transcript_result['error']}")
             return transcript_result
         
-        transcript = transcript_result["transcript"]
-        print(f"✓ Transcript: {transcript[:150]}...")
+        if transcript_result.get("diarization_results"):
+            formatted_transcript = "\n".join([f"Speaker {d['speaker']}: {d['transcript']}" for d in transcript_result["diarization_results"]])
+            raw_transcript = transcript_result["transcript"] # Keep raw for metrics if needed
+            print(f"✓ Diarized Transcript: {formatted_transcript[:150]}...")
+            print(f"✓ Raw Transcript: {raw_transcript[:150]}...")
+        else:
+            formatted_transcript = transcript_result["transcript"]
+            print(f"✓ Transcript: {formatted_transcript[:150]}...")
+        
         print(f"✓ Confidence: {transcript_result['confidence']:.2%}")
         print(f"✓ WER Estimate: {transcript_result['wer_estimate']:.2f}%\n")
         
         # Step 2: Generate Response
         print("Step 2: Generating AI response...")
-        response_result = await self.response_gen.generate_interview_response(transcript, context)
+        response_result = await self.response_gen.generate_interview_response(formatted_transcript, context)
         
         if not response_result["success"]:
             print(f"❌ Response generation failed: {response_result['error']}")
@@ -69,8 +76,14 @@ class InterviewService:
         print("\n" + "="*80)
         print("✅ SUCCESS! INTERVIEW PROCESSED")
         print("="*80)
-        print(f"\n📝 QUESTION TRANSCRIBED:")
-        print(f"{transcript}\n")
+        print(f"\n📝 CONVERSATION TRANSCRIBED:")
+        if transcript_result.get("diarization_results"):
+            for entry in transcript_result["diarization_results"]:
+                print(f"  Speaker {entry['speaker']}: {entry['transcript']}")
+            print(f"\n💡 AI ANALYZED RESPONSE (based on raw transcript):")
+            print(f"{transcript_result['transcript']}\n")
+        else:
+            print(f"{formatted_transcript}\n")
         print(f"💡 SUGGESTED ANSWER:")
         print(f"{response_result['response']}\n")
         print(f"📊 PERFORMANCE:")
@@ -81,7 +94,7 @@ class InterviewService:
         
         return {
             "success": True,
-            "transcription": transcript_result,
+            "transcription": transcript_result, # Keep full result here
             "response": response_result,
             "processing_time": elapsed
         }

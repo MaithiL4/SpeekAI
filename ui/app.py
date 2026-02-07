@@ -102,8 +102,14 @@ with tab1:
                             col1, col2 = st.columns(2)
                             
                             with col1:
-                                st.subheader("📝 Transcription")
-                                st.info(result["transcription"]["transcript"])
+                                st.subheader("📝 Conversation Transcription")
+                                if result["transcription"].get("diarization_results"):
+                                    for entry in result["transcription"]["diarization_results"]:
+                                        st.markdown(f"**Speaker {entry['speaker']}**: {entry['transcript']}")
+                                    st.caption("--- Raw Transcript (for metrics) ---")
+                                    st.info(result["transcription"]["transcript"])
+                                else:
+                                    st.info(result["transcription"]["transcript"])
                                 
                                 # Metrics
                                 metrics_col1, metrics_col2, metrics_col3 = st.columns(3)
