@@ -42,22 +42,36 @@ class TranscriptionService:
             word_count = 0
             diarization_results = []
 
-            if diarize and response.results.utterances:
-                full_transcript_segments = []
-                total_confidence = 0
-                total_words = 0
-                for utterance in response.results.utterances:
-                    speaker = utterance.speaker
-                    text = utterance.transcript
-                    full_transcript_segments.append(f"Speaker {speaker}: {text}")
-                    diarization_results.append({"speaker": speaker, "transcript": text})
-                    total_confidence += utterance.confidence
-                    total_words += len(text.split())
-                
-                transcript_text = " ".join([seg.split(": ", 1)[1] for seg in full_transcript_segments])
-                confidence = total_confidence / len(response.results.utterances) if response.results.utterances else 0
-                word_count = total_words
+            if diarize and response.results.channels and response.results.channels[0].alternatives[0].words:
+                alternative = response.results.channels[0].alternatives[0]
+                transcript_text = alternative.transcript
+                confidence = alternative.confidence
+                word_count = len(transcript_text.split())
                 wer_estimate = (1 - confidence) * 100
+
+                # Process diarization from words
+                current_speaker = None
+                speaker_text = ""
+                
+                # Group words by speaker
+                for word in alternative.words:
+                    if word.speaker != current_speaker:
+                        if current_speaker is not None:
+                            diarization_results.append({
+                                "speaker": current_speaker,
+                                "transcript": speaker_text.strip()
+                            })
+                        current_speaker = word.speaker
+                        speaker_text = ""
+                    speaker_text += word.word + " "
+
+                # Add the last speaker's utterance
+                if speaker_text:
+                    diarization_results.append({
+                        "speaker": current_speaker,
+                        "transcript": speaker_text.strip()
+                    })
+
                 logger.info(f"✓ Diarized transcription complete. Confidence: {confidence:.2%}")
 
             elif response.results.channels:
