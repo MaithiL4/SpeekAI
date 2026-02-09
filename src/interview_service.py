@@ -65,7 +65,9 @@ class InterviewService:
         
         # Step 2: Generate Response
         print("Step 2: Generating AI response...")
-        response_result = await self.response_gen.generate_interview_response(formatted_transcript, context)
+        response_result = await self.response_gen.generate_interview_response(
+            transcript_result["transcript"], context
+        )
         
         if not response_result["success"]:
             print(f"❌ Response generation failed: {response_result['error']}")
