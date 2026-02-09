@@ -1,7 +1,7 @@
 """
 REST API for interview service
 """
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import tempfile
@@ -11,6 +11,7 @@ from pathlib import Path
 
 from .config import Config
 from .interview_service import InterviewService
+from .realtime_service import RealtimeTranscriptionService
 
 app = FastAPI(
     title="Clarity Interview AI",
@@ -27,15 +28,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize service globally
+# Initialize services globally
 service = None
+rt_service = None
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize service on startup"""
-    global service
+    """Initialize services on startup"""
+    global service, rt_service
     service = InterviewService()
-    print("✓ Interview service initialized")
+    rt_service = RealtimeTranscriptionService(Config.DEEPGRAM_API_KEY)
+    print("✓ Interview services initialized")
 
 
 @app.get("/")
@@ -47,7 +50,8 @@ def root():
         "endpoints": {
             "health": "/health",
             "docs": "/docs",
-            "process_interview": "/process-interview"
+            "process_interview": "/process-interview",
+            "transcribe_ws": "/ws/transcribe"
         }
     }
 
@@ -62,6 +66,18 @@ def health_check():
             "mistral_configured": bool(Config.MISTRAL_API_KEY)
         }
     }
+
+@app.websocket("/ws/transcribe")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    try:
+        await rt_service.transcribe(websocket)
+    except WebSocketDisconnect:
+        print("Client disconnected.")
+    except Exception as e:
+        print(f"Error in websocket endpoint: {e}")
+    finally:
+        await websocket.close()
 
 
 @app.post("/process-interview")

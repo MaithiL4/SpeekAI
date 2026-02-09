@@ -4,6 +4,12 @@ import os
 from pathlib import Path
 import tempfile
 import asyncio
+import websockets
+import queue
+import threading
+import time
+from streamlit_webrtc import webrtc_streamer, WebRtcMode, ClientSettings
+import av
 
 # Add src to path so we can import our services
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -23,6 +29,46 @@ def get_service():
     """Initialize and cache the interview service"""
     return InterviewService()
 
+if "audio_buffer" not in st.session_state:
+    st.session_state.audio_buffer = queue.Queue()
+if "transcript" not in st.session_state:
+    st.session_state.transcript = ""
+if "run" not in st.session_state:
+    st.session_state.run = False
+
+async def ws_sender(audio_queue):
+    uri = "ws://localhost:8000/ws/transcribe"
+    async with websockets.connect(uri) as websocket:
+        st.session_state.websocket = websocket
+        while st.session_state.run:
+            try:
+                audio_frame = audio_queue.get(timeout=1)
+                await websocket.send(audio_frame.to_ndarray().tobytes())
+            except queue.Empty:
+                await asyncio.sleep(0.01)
+
+async def ws_receiver():
+    uri = "ws://localhost:8000/ws/transcribe"
+    while st.session_state.run:
+        try:
+            if "websocket" in st.session_state and st.session_state.websocket:
+                transcript_chunk = await st.session_state.websocket.recv()
+                st.session_state.transcript += transcript_chunk
+        except websockets.exceptions.ConnectionClosed:
+            break
+        except Exception as e:
+            print(f"Receiver error: {e}")
+            break
+
+def thread_main(audio_queue):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    sender_task = loop.create_task(ws_sender(audio_queue))
+    receiver_task = loop.create_task(ws_receiver())
+    
+    loop.run_until_complete(asyncio.gather(sender_task, receiver_task))
+
 # Title and header
 st.title("🎤 SpeekAI - Clarity Interview AI")
 st.subheader("AI-Powered Interview Coach • 99.36% Accuracy • Better than ParakeetAI")
@@ -37,9 +83,74 @@ col4.metric("Cost", "₹0.50", "vs ₹492")
 st.divider()
 
 # Main tabs
-tab1, tab2, tab3 = st.tabs(["🎙️ Process Interview", "📊 About", "🚀 How It Works"])
+tab1, tab2, tab3, tab4 = st.tabs(["🔴 Real-time Interview", "🎙️ Process Interview", "📊 About", "🚀 How It Works"])
 
 with tab1:
+    st.header("Real-time Interview Practice")
+
+    def audio_frame_callback(frame: av.AudioFrame):
+        if st.session_state.get("run", False):
+            st.session_state.audio_buffer.put(frame)
+        return frame
+
+    webrtc_streamer(
+        key="realtime_interview",
+        mode=WebRtcMode.SENDONLY,
+        client_settings=ClientSettings(
+            rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
+            media_stream_constraints={"video": False, "audio": True},
+        ),
+        audio_frame_callback=audio_frame_callback,
+    )
+
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Start Interview"):
+            st.session_state.run = True
+            st.session_state.transcript = ""
+            st.session_state.ai_suggestion = ""
+            st.session_state.audio_buffer = queue.Queue() # Clear the queue
+            
+            if "thread" not in st.session_state or not st.session_state.thread.is_alive():
+                st.session_state.thread = threading.Thread(target=thread_main, args=(st.session_state.audio_buffer,))
+                st.session_state.thread.start()
+
+    with col2:
+        if st.button("Stop Interview"):
+            st.session_state.run = False
+            if "thread" in st.session_state and st.session_state.thread.is_alive():
+                st.session_state.thread.join(timeout=2)
+            
+            # Get AI suggestion
+            if st.session_state.transcript:
+                with st.spinner("🤖 Generating AI suggestion..."):
+                    service = get_service()
+                    result = asyncio.run(service.response_gen.generate_interview_response(st.session_state.transcript))
+                    if result["success"]:
+                        st.session_state.ai_suggestion = result["response"]
+                    else:
+                        st.session_state.ai_suggestion = "Sorry, I couldn't generate a suggestion."
+
+
+    st.subheader("Live Transcript")
+    transcript_placeholder = st.empty()
+    transcript_placeholder.text_area("Transcript", st.session_state.get("transcript", ""), height=200)
+
+    if "ai_suggestion" in st.session_state and st.session_state.ai_suggestion:
+        st.subheader("💡 AI Suggestion")
+        st.markdown(st.session_state.ai_suggestion)
+
+    # Rerun the app to update the transcript
+    if st.session_state.get("run", False):
+        try:
+            time.sleep(0.1)
+            st.experimental_rerun()
+        except Exception as e:
+            st.error(f"Error during rerun: {e}")
+
+
+
+with tab2:
     st.header("Upload Interview Audio")
     st.write("Upload your interview question recording and get instant AI-powered feedback.")
     
@@ -152,7 +263,7 @@ with tab1:
     else:
         st.info("👆 Upload an audio file to get started")
 
-with tab2:
+with tab3:
     st.header("📊 About SpeekAI")
     
     st.markdown("""
