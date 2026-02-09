@@ -36,38 +36,43 @@ if "transcript" not in st.session_state:
 if "run" not in st.session_state:
     st.session_state.run = False
 
-async def ws_sender(audio_queue):
+async def thread_main_async(audio_queue):
     uri = "ws://localhost:8000/ws/transcribe"
     async with websockets.connect(uri) as websocket:
         st.session_state.websocket = websocket
-        while st.session_state.run:
-            try:
-                audio_frame = audio_queue.get(timeout=1)
-                await websocket.send(audio_frame.to_ndarray().tobytes())
-            except queue.Empty:
-                await asyncio.sleep(0.01)
 
-async def ws_receiver():
-    uri = "ws://localhost:8000/ws/transcribe"
-    while st.session_state.run:
-        try:
-            if "websocket" in st.session_state and st.session_state.websocket:
-                transcript_chunk = await st.session_state.websocket.recv()
-                st.session_state.transcript += transcript_chunk
-        except websockets.exceptions.ConnectionClosed:
-            break
-        except Exception as e:
-            print(f"Receiver error: {e}")
-            break
+        async def sender(audio_queue):
+            while st.session_state.get("run", False):
+                try:
+                    audio_frame = audio_queue.get(timeout=1)
+                    await websocket.send(audio_frame.to_ndarray().tobytes())
+                except queue.Empty:
+                    await asyncio.sleep(0.01)
+                except Exception as e:
+                    print(f"Sender error: {e}")
+                    break
+        
+        async def receiver():
+            while st.session_state.get("run", False):
+                try:
+                    transcript_chunk = await websocket.recv()
+                    st.session_state.transcript += transcript_chunk
+                except websockets.exceptions.ConnectionClosed:
+                    print("Receiver connection closed.")
+                    break
+                except Exception as e:
+                    print(f"Receiver error: {e}")
+                    break
+
+        await asyncio.gather(sender(audio_queue), receiver())
 
 def thread_main(audio_queue):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    
-    sender_task = loop.create_task(ws_sender(audio_queue))
-    receiver_task = loop.create_task(ws_receiver())
-    
-    loop.run_until_complete(asyncio.gather(sender_task, receiver_task))
+    try:
+        loop.run_until_complete(thread_main_async(audio_queue))
+    finally:
+        loop.close()
 
 # Title and header
 st.title("🎤 SpeekAI - Clarity Interview AI")
