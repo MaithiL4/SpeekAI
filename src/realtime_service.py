@@ -1,10 +1,9 @@
 """
-Real-time transcription service using Deepgram, with FastAPI APIRouter.
+Real-time transcription service using Deepgram SDK v5.
 """
-import asyncio
 import logging
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from deepgram import AsyncDeepgramClient, LiveTranscriptionEvents
+from fastapi import APIRouter, WebSocket
+from deepgram import DeepgramClient
 from .config import Config
 
 # Initialize logging
@@ -14,63 +13,35 @@ logger = logging.getLogger(__name__)
 # Create FastAPI router
 router = APIRouter()
 
-class RealtimeTranscriptionService:
-    def __init__(self, deepgram_api_key: str):
-        self.client = AsyncDeepgramClient(api_key=deepgram_api_key)
-        self.dg_connection = None
-        self.client_websocket = None
-        logger.info("✓ RealtimeTranscriptionService initialized")
-
-    async def connect_to_deepgram(self):
-        try:
-            self.dg_connection = self.client.listen.asynclive.v("1")
-            
-            async def on_message(self, result, **kwargs):
-                transcript = result.channel.alternatives[0].transcript
-                if len(transcript) > 0 and self.client_websocket:
-                    await self.client_websocket.send_text(transcript)
-
-            async def on_error(self, error, **kwargs):
-                logger.error(f"Deepgram error: {error}")
-
-            self.dg_connection.on(LiveTranscriptionEvents.Transcript, on_message)
-            self.dg_connection.on(LiveTranscriptionEvents.Error, on_error)
-
-            await self.dg_connection.start({
-                "model": Config.DEEPGRAM_MODEL,
-                "language": "en",
-                "smart_format": True,
-                "punctuate": True,
-                "diarize": True
-            })
-            logger.info("✓ Deepgram connection established")
-
-        except Exception as e:
-            logger.error(f"Could not connect to Deepgram: {e}")
-
-    async def transcription_loop(self):
-        try:
-            while True:
-                data = await self.client_websocket.receive_bytes()
-                if self.dg_connection:
-                    await self.dg_connection.send(data)
-        except WebSocketDisconnect:
-            logger.info("Client disconnected from WebSocket.")
-        except Exception as e:
-            logger.error(f"Error in transcription loop: {e}")
-        finally:
-            if self.dg_connection:
-                await self.dg_connection.finish()
-                self.dg_connection = None
-            logger.info("Transcription loop finished.")
-
-# Instantiate the service
-rt_service = RealtimeTranscriptionService(Config.DEEPGRAM_API_KEY)
+# Initialize Deepgram client
+deepgram = DeepgramClient(api_key=Config.DEEPGRAM_API_KEY)
 
 @router.websocket("/ws/transcribe")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
-    rt_service.client_websocket = websocket
-    await rt_service.connect_to_deepgram()
-    await rt_service.transcription_loop()
+    
+    try:
+        # Create a Deepgram live transcription connection
+        dg_socket = await deepgram.listen.asynclive.v("1").start({
+            "punctuate": True,
+            "interim_results": False,
+            "language": "en-US",
+            "diarize": True
+        })
+
+        async def on_message(self, data, **kwargs):
+            transcript = data.get('channel', {}).get('alternatives', [{}])[0].get('transcript', '')
+            if len(transcript) > 0:
+                await websocket.send_text(transcript)
+
+        dg_socket.registerHandler(dg_socket.event.TRANSCRIPT_RECEIVED, on_message)
+
+        while True:
+            data = await websocket.receive_bytes()
+            dg_socket.send(data)
+
+    except Exception as e:
+        logger.error(f"WebSocket Error: {e}")
+    finally:
+        await websocket.close()
 

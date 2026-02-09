@@ -1,4 +1,9 @@
 import streamlit as st
+
+# Monkey-patch for streamlit-webrtc compatibility
+if not hasattr(st, 'experimental_rerun'):
+    st.experimental_rerun = st.rerun
+
 import sys
 import os
 from pathlib import Path
@@ -8,7 +13,7 @@ import websockets
 import queue
 import threading
 import time
-from streamlit_webrtc import webrtc_streamer, WebRtcMode, ClientSettings
+from streamlit_webrtc import webrtc_streamer, WebRtcMode
 import av
 
 # Add src to path so we can import our services
@@ -101,10 +106,7 @@ with tab1:
     webrtc_streamer(
         key="realtime_interview",
         mode=WebRtcMode.SENDONLY,
-        client_settings=ClientSettings(
-            rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
-            media_stream_constraints={"video": False, "audio": True},
-        ),
+        media_stream_constraints={"video": False, "audio": True},
         audio_frame_callback=audio_frame_callback,
     )
 
@@ -149,7 +151,7 @@ with tab1:
     if st.session_state.get("run", False):
         try:
             time.sleep(0.1)
-            st.rerun()
+            st.experimental_rerun()
         except Exception as e:
             st.error(f"Error during rerun: {e}")
 
